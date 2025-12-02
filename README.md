@@ -29,6 +29,14 @@ To get started with Configre, follow these steps:
    - `[hostname].js`: Override configurations for specific hosts.
    - `[hostname].dev.js`: Development-specific configurations.
 
+   > **Note:** If your main project uses `"type": "module"` in its `package.json`, add a `package.json` inside the `config/` directory with the following content so you can keep using `module.exports` in your config files:
+   >
+   > ```json
+   > {
+   >   "type": "commonjs"
+   > }
+   > ```
+
 3. **Use Configre in Your Project**
 
    Import and use Configre to load your configurations:

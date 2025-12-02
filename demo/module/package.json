@@ -1,0 +1,17 @@
+{
+  "name": "configre-demo-module",
+  "version": "1.0.0",
+  "description": "Demo module using Configre with ES modules",
+  "type": "module",
+  "main": "demo.js",
+  "scripts": {
+    "start": "node demo.js"
+  },
+  "dependencies": {
+    "configre": "file:../..",
+    "lemonlog": "^1.0.2"
+  },
+  "author": "Martin Clasen",
+  "license": "MIT"
+}
+
