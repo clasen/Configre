@@ -7,7 +7,7 @@ Welcome to Configre, the coolest way to manage your project's configuration with
 - **Environment-Specific Configurations**: Automatically loads configurations based on the hostname or a custom profile passed via command line arguments.
 - **Fallback to Defaults**: Uses a default configuration as a baseline, ensuring your application always has the necessary settings.
 - **Easy Integration**: A simple setup process that integrates effortlessly into any project.
-- **Support for `.js` Config Files**: Allows for dynamic configuration values and comments for better clarity.
+- **Support for `.cjs` Config Files**: Config files must use the `.cjs` extension. This allows dynamic configuration values and comments, and works the same in both CommonJS and ESM projects.
 
 ## 🌟 Getting Started
 
@@ -30,17 +30,11 @@ To get started with Configre, follow these steps:
 
    Organize your configuration files within a directory (e.g., `config`). Create a default configuration file and environment-specific files as needed.
 
-   - `index.js`: Your default configuration.
-   - `[hostname].js`: Override configurations for specific hosts.
-   - `[hostname].dev.js`: Development-specific configurations.
+   - `index.cjs`: Your default configuration.
+   - `[hostname].cjs`: Override configurations for specific hosts.
+   - `[hostname].dev.cjs`: Development-specific configurations.
 
-   > **Note:** If your main project uses `"type": "module"` in its `package.json`, add a `package.json` inside the `config/` directory with the following content so you can keep using `module.exports` in your config files:
-   >
-   > ```json
-   > {
-   >   "type": "commonjs"
-   > }
-   > ```
+   > **Note:** Config files must always use the `.cjs` extension. That way they work in both CommonJS and ESM projects and you can use `module.exports` in them.
 
 3. **Use Configre in Your Project**
 
@@ -55,10 +49,10 @@ To get started with Configre, follow these steps:
 
 Imagine you have the following structure in your `config` directory:
 
-- `index.js`: Contains default settings.
-- `myhostname.js`: Contains overrides for the host named `myhostname`.
+- `index.cjs`: Contains default settings.
+- `myhostname.cjs`: Contains overrides for the host named `myhostname`.
 
-Your `index.js` might look like this:
+Your `index.cjs` might look like this:
 
 ```javascript
 module.exports = {
@@ -73,7 +67,7 @@ module.exports = {
 }
 ```
 
-And your `myhostname.js`:
+And your `myhostname.cjs`:
 
 ```javascript
 module.exports = {
