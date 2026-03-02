@@ -21,6 +21,11 @@ To get started with Configre, follow these steps:
    npm install configre --save
    ```
 
+> You can also add ModelMix as a skill for AI agentic development:
+> ```bash
+> npx skills add https://github.com/clasen/Configre --skill configre
+> ```   
+
 2. **Setup Your Configuration Files**
 
    Organize your configuration files within a directory (e.g., `config`). Create a default configuration file and environment-specific files as needed.
