@@ -12,7 +12,8 @@ class ConfigreClass {
         ]);
         
         this.dirname = path;
-        this.profile = process.argv.length > 2 ? process.argv[2] : os.hostname();
+        const configArg = process.argv.find(arg => arg.startsWith('--config='));
+        this.profile = configArg ? configArg.slice('--config='.length) : os.hostname();
         this.profileSettings = this.loadProfileSettings();
     }
 

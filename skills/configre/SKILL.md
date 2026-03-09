@@ -77,11 +77,20 @@ const cfg = require("configre")(__dirname + "/settings");
 
 ## Profile resolution
 
-Configre determines the active profile from `process.argv[2]` (CLI argument) or `os.hostname()` as fallback. It then checks for overrides in this order (first match wins):
+Configre determines the active profile by looking for a `--config=<profile>` argument anywhere in `process.argv`, or falls back to `os.hostname()`. It then checks for overrides in this order (first match wins):
 
 1. `config/<profile>.dev.cjs` — dev override
 2. `config/<profile>.cjs` — production override
 3. No match — uses defaults only
+
+To force a specific profile at runtime:
+
+```bash
+node app.js --config=staging
+node app.js --port=3000 --config=production --debug
+```
+
+Using `--config=` (instead of a positional argument) avoids conflicts with other CLI flags.
 
 ## Examples
 
@@ -97,8 +106,8 @@ Result: each server automatically loads its own config based on hostname
 
 **Example 3: Custom profile via CLI**
 User says: "I want to run my app with a staging config"
-Actions: create `config/staging.cjs`, run app with `node app.js staging`
-Result: staging overrides are merged over defaults
+Actions: create `config/staging.cjs`, run app with `node app.js --config=staging`
+Result: staging overrides are merged over defaults, without conflicting with other CLI arguments
 
 ## Key behaviors
 

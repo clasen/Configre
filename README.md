@@ -4,7 +4,7 @@ Welcome to Configre, the coolest way to manage your project's configuration with
 
 ## ✨ Features
 
-- **Environment-Specific Configurations**: Automatically loads configurations based on the hostname or a custom profile passed via command line arguments.
+- **Environment-Specific Configurations**: Automatically loads configurations based on the hostname or a custom profile forced via `--config=<profile>` CLI argument.
 - **Fallback to Defaults**: Uses a default configuration as a baseline, ensuring your application always has the necessary settings.
 - **Easy Integration**: A simple setup process that integrates effortlessly into any project.
 - **Support for `.cjs` Config Files**: Config files must use the `.cjs` extension. This allows dynamic configuration values and comments, and works the same in both CommonJS and ESM projects.
@@ -79,6 +79,17 @@ module.exports = {
 ```
 
 Configre merges these configurations based on your environment, making your app adaptable and easier to manage.
+
+## 🎯 Forcing a Profile
+
+You can override the hostname-based profile detection by passing `--config=<profile>` anywhere in the CLI arguments:
+
+```bash
+node app.js --config=staging
+node app.js --port=3000 --config=production --debug
+```
+
+This loads `config/staging.cjs` (or `config/staging.dev.cjs`) regardless of the hostname. The `--config=` flag is safe to use alongside any other arguments.
 
 ## 🤔 Why Configre?
 
