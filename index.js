@@ -1,20 +1,27 @@
 const fs = require("fs");
+const path = require("path");
 const os = require("os");
 const obj = require("lodash/object");
 const log = require("lemonlog")("Configre");
 
 class ConfigreClass {
-    constructor(path = __dirname + "/../../config") {
+    constructor(pathOrDir = __dirname + "/../../config") {
+        const dir = path.join(pathOrDir);
+        const isNested = (ConfigreClass._nesting || 0) > 0;
+        ConfigreClass._nesting = (ConfigreClass._nesting || 0) + 1;
+
         this.defaultSettings = this.tryRequire([
-            path,
-            path + '/index.cjs',
-            path + '.cjs'
+            dir,
+            path.join(dir, "index.cjs"),
+            pathOrDir + ".cjs"
         ]);
-        
-        this.dirname = path;
+
+        this.dirname = dir;
+        this._isNested = isNested;
         const configArg = process.argv.find(arg => arg.startsWith('--config='));
         this.profile = configArg ? configArg.slice('--config='.length) : os.hostname();
         this.profileSettings = this.loadProfileSettings();
+        ConfigreClass._nesting -= 1;
     }
 
     // Helper method to try requiring files with different extensions or paths
@@ -29,33 +36,33 @@ class ConfigreClass {
         throw new Error(`Could not load config from any of: ${paths.join(', ')}`);
     }
 
-    // Helper method to try loading a file with .js or .cjs extension
+    // Helper method to try loading a file with .cjs extension only
     tryRequireWithExtensions(basePath) {
-        const extensions = ['.js', '.cjs'];
-        for (const ext of extensions) {
-            const fullPath = basePath + ext;
-            if (fs.existsSync(fullPath)) {
-                return { path: fullPath, module: require(fullPath) };
-            }
+        const ext = '.cjs';
+        const fullPath = path.join(basePath + ext);
+        if (fs.existsSync(fullPath)) {
+            return { path: fullPath, module: require(fullPath) };
         }
         return null;
     }
 
     loadProfileSettings() {
         const basePaths = [
-            { base: `${this.dirname}/${this.profile}.dev`, type: "DEV CONFIG" },
-            { base: `${this.dirname}/${this.profile}`, type: "PRO CONFIG" }
+            { base: path.join(this.dirname, `${this.profile}.dev`), type: "DEV CONFIG" },
+            { base: path.join(this.dirname, this.profile), type: "PRO CONFIG" }
         ];
 
         for (const { base, type } of basePaths) {
             const result = this.tryRequireWithExtensions(base);
             if (result) {
-                log.warn(result.path, type);
+                if (!this._isNested) log.warn(result.path, type);
                 return result.module;
             }
         }
 
-        log.warn(`${this.dirname}/${this.profile}.js`, "NOT FOUND, USING DEFAULTS");
+        if (!this._isNested) {
+            log.warn(path.join(this.dirname, `${this.profile}.cjs`), "NOT FOUND, USING DEFAULTS");
+        }
         return {};
     }
 

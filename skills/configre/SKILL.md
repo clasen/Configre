@@ -112,5 +112,5 @@ Result: staging overrides are merged over defaults, without conflicting with oth
 ## Key behaviors
 
 - **Deep merge**: nested objects merge recursively via lodash `_.merge`
-- **Config files must use the `.cjs` extension** (works in both CommonJS and ESM projects)
+- **Config files must use the `.cjs` extension** (`.js` is not accepted; works in both CommonJS and ESM projects)
 - **Function vs constructor**: `Configre(path)` returns the merged config directly; `new Configre(path)` returns the instance (use `.get()` to retrieve config)

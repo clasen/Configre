@@ -7,7 +7,7 @@ Welcome to Configre, the coolest way to manage your project's configuration with
 - **Environment-Specific Configurations**: Automatically loads configurations based on the hostname or a custom profile forced via `--config=<profile>` CLI argument.
 - **Fallback to Defaults**: Uses a default configuration as a baseline, ensuring your application always has the necessary settings.
 - **Easy Integration**: A simple setup process that integrates effortlessly into any project.
-- **Support for `.cjs` Config Files**: Config files must use the `.cjs` extension. This allows dynamic configuration values and comments, and works the same in both CommonJS and ESM projects.
+- **Support for `.cjs` Config Files Only**: Config files must use the `.cjs` extension. This allows dynamic configuration values and comments, and works the same in both CommonJS and ESM projects.
 
 ## 🌟 Getting Started
 
@@ -34,7 +34,7 @@ To get started with Configre, follow these steps:
    - `[hostname].cjs`: Override configurations for specific hosts.
    - `[hostname].dev.cjs`: Development-specific configurations.
 
-   > **Note:** Config files must always use the `.cjs` extension. That way they work in both CommonJS and ESM projects and you can use `module.exports` in them.
+   > **Note:** Config files must always use the `.cjs` extension; `.js` config files are not accepted. That way they work in both CommonJS and ESM projects and you can use `module.exports` in them.
 
 3. **Use Configre in Your Project**
 
@@ -80,16 +80,17 @@ module.exports = {
 
 Configre merges these configurations based on your environment, making your app adaptable and easier to manage.
 
-## 🎯 Forcing a Profile
+## 🎯 Forcing a hostname / config
 
-You can override the hostname-based profile detection by passing `--config=<profile>` anywhere in the CLI arguments:
+By default Configre uses the machine’s hostname to choose the config file (e.g. `config/<hostname>.cjs`). You can force which hostname or profile to use with the `--config=<hostname>` CLI argument:
 
 ```bash
-node app.js --config=staging
-node app.js --port=3000 --config=production --debug
+node demo.js --config=staging
+node demo.js --config=production
+node demo.js --port=3000 --config=myhost --debug
 ```
 
-This loads `config/staging.cjs` (or `config/staging.dev.cjs`) regardless of the hostname. The `--config=` flag is safe to use alongside any other arguments.
+This loads `config/staging.cjs` (or `config/staging.dev.cjs`) instead of the one for the actual hostname. The `--config=` flag can appear anywhere in the command and works alongside other arguments.
 
 ## 🤔 Why Configre?
 
