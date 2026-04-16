@@ -3,8 +3,7 @@
   "version": "1.2.2",
   "description": "🔧 Effortlessly Tailor Your Settings",
   "dependencies": {
-    "lemonlog": "^1.0.2",
-    "lodash": "^4.17.21"
+    "lemonlog": "^1.2.2"
   },
   "main": "index.js",
   "keywords": [

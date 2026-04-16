@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const obj = require("lodash/object");
+const obj = require("./merge");
 const log = require("lemonlog")("Configre");
 
 class ConfigreClass {
