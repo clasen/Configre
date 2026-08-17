@@ -32,5 +32,6 @@
   "bugs": {
     "url": "https://github.com/clasen/Configre/issues"
   },
-  "homepage": "https://github.com/clasen/Configre#readme"
+  "homepage": "https://github.com/clasen/Configre#readme",
+  "packageManager": "pnpm@11.9.0"
 }
