@@ -5,7 +5,11 @@ const obj = require("./merge");
 const log = require("lemonlog")("Configre");
 
 class ConfigreClass {
-    constructor(pathOrDir = __dirname + "/../../config") {
+    constructor(pathOrDir) {
+        if (typeof pathOrDir !== "string" || pathOrDir.length === 0) {
+            throw new TypeError("Configre path must be a non-empty string");
+        }
+
         const dir = path.join(pathOrDir);
         const isNested = (ConfigreClass._nesting || 0) > 0;
         ConfigreClass._nesting = (ConfigreClass._nesting || 0) + 1;

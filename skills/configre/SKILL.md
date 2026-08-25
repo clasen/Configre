@@ -63,13 +63,16 @@ module.exports = {
 ### Step 5: Load the configuration
 
 ```javascript
-const cfg = require("configre")();
+const path = require("path");
+const cfg = require("configre")(path.join(__dirname, "config"));
 
 console.log(cfg.db.host); // from default
 console.log(cfg.db.user); // from host override
 ```
 
-To use a custom config directory:
+The path argument is required. Prefer an absolute path anchored to the module. Do not recommend paths derived from `process.cwd()`, such as `path.join(process.cwd(), "config")`: they can point somewhere else when the process is launched from a different directory.
+
+To use a different config directory:
 
 ```javascript
 const cfg = require("configre")(__dirname + "/settings");
@@ -96,7 +99,7 @@ Using `--config=` (instead of a positional argument) avoids conflicts with other
 
 **Example 1: Basic setup**
 User says: "Add configuration management to my Node.js project"
-Actions: install configre, create `config/index.cjs` with project defaults, load with `require("configre")()`
+Actions: install configre, create `config/index.cjs` with project defaults, load with `require("configre")(path.join(__dirname, "config"))`
 Result: merged config object ready to use
 
 **Example 2: Multi-environment**
@@ -113,4 +116,5 @@ Result: staging overrides are merged over defaults, without conflicting with oth
 
 - **Deep merge**: nested objects merge recursively via lodash `_.merge`
 - **Config files must use the `.cjs` extension** (`.js` is not accepted; works in both CommonJS and ESM projects)
+- **Required path**: always pass the config directory or file path; prefer an absolute module-relative path over a process-relative path
 - **Function vs constructor**: `Configre(path)` returns the merged config directly; `new Configre(path)` returns the instance (use `.get()` to retrieve config)

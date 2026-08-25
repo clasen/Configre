@@ -38,11 +38,23 @@ To get started with Configre, follow these steps:
 
 3. **Use Configre in Your Project**
 
-   Import and use Configre to load your configurations:
+   Import and use Configre to load your configurations. The configuration path is required:
 
    ```javascript
-   const cfg = require("Configre")(); // default dir '/config'
+   const path = require("path");
+   const cfg = require("configre")(path.join(__dirname, "config"));
    console.log(cfg.db); // Access your db configuration
+   ```
+
+   Prefer an absolute path anchored to the module, as above. Avoid deriving it from `process.cwd()` (for example, `path.join(process.cwd(), "config")`), because that can point to a different location depending on where the process is started.
+
+   In ESM, anchor the path to `import.meta.dirname`:
+
+   ```javascript
+   import Configre from "configre";
+   import { join } from "node:path";
+
+   const cfg = Configre(join(import.meta.dirname, "config"));
    ```
 
 ## 📚 Example
