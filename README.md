@@ -119,10 +119,10 @@ import Configre from "../../index.js";
 import { join } from "node:path";
 
 const configPath = join(import.meta.dirname, "config");
-const cfg = Configre(configPath, { secrets: true });
+const cfg = Configre(configPath);
 ```
 
-`{ secrets: true }` enables this workflow. Loading remains synchronous, and your application reads the result through ordinary properties such as `cfg.api.key`.
+Secrets activate automatically when the base configuration or selected profile has a corresponding `.secret.cjs` file, or when `secrets.enc.json` already exists. No options are needed. Loading remains synchronous, and your application reads the result through ordinary properties such as `cfg.api.key`.
 
 > The demo reports `API key configured:` without printing the key. Avoid logging `cfg` in your application: it contains the decrypted secrets.
 
@@ -138,18 +138,24 @@ module.exports = {
 };
 ```
 
+Create `demo/secrets/config/index.secret.cjs` yourself to enable secrets, initially with:
+
+```javascript
+module.exports = {};
+```
+
 Then run:
 
 ```bash
 node demo/secrets/demo.js
 ```
 
-For a new setup, Configre creates the following files and directory:
+For a new setup, Configre generates the encrypted file, recipients directory and Git exclusions alongside your existing configuration files:
 
 ```text
 demo/secrets/config/
   index.cjs          # Public configuration
-  index.secret.cjs   # Editable secrets; starts with module.exports = {};
+  index.secret.cjs   # Editable secrets you create yourself
   recipients/        # Public keys of servers that register
   secrets.enc.json   # Generated encrypted values
   .gitignore         # Keeps .secret.cjs files out of Git
@@ -163,7 +169,7 @@ With the public placeholder empty and no secrets added, look for:
 API key configured: false
 ```
 
-**`index.secret.cjs` starts empty on purpose.** Configre does not copy values from `index.cjs` into it. It contains only the fields you choose to override with secrets; public settings continue to come from `index.cjs`.
+**Configre never creates `.secret.cjs` files.** Without a secret counterpart for the base configuration or selected profile, and without an encrypted file, it loads only public settings and creates no identity or secret artifacts. A secret module contains only the fields you choose to override; public settings continue to come from `index.cjs`.
 
 These initialization steps describe a new setup. If `secrets.enc.json` already exists, Configre uses that encrypted file instead of resetting it. A checkout containing the encrypted file but no `.secret.cjs` files is treated as a server checkout.
 
@@ -254,7 +260,7 @@ node demo/secrets/demo.js
 
 Commit and push the updated `secrets.enc.json`, then pull and restart the demo on the server. **You do not need to copy or register `truco.pub` again.** Its existing authorization also covers new keys you add later.
 
-For settings specific to `truco`, add `demo/secrets/config/truco.cjs`. The next administrator run creates an empty `truco.secret.cjs` counterpart, which you can fill with that profile's secrets. All profile secret files, including inactive ones, are encrypted together when the administrator runs the demo.
+For settings specific to `truco`, add `demo/secrets/config/truco.cjs` and create `truco.secret.cjs` yourself with that profile's secrets. The secret file activates secrets when `truco` is selected, even without `index.secret.cjs`. A public profile alone never creates a secret counterpart. Once secrets are active, all profile secret files, including inactive ones, are encrypted together when the administrator runs the demo.
 
 For `--config=truco`, the merge order is:
 
@@ -271,7 +277,7 @@ To revoke this server, remove `demo/secrets/config/recipients/truco.pub`, run th
 
 - Secret `.cjs` modules execute on the administrator and are reloaded on each Configre call. They must export plain objects containing JSON-compatible objects, arrays, strings, finite numbers, booleans and `null`. Functions, `undefined`, accessors, symbols, custom objects, circular references, and properties named `__proto__`, `constructor` or `prototype` are rejected. Consumers decrypt data without executing these modules.
 - Empty strings stay empty strings. Configre does not fill them from environment variables or populate `process.env`. The existing deep-merge behavior, including array merging, also applies to secrets.
-- Without `{ secrets: true }`, Configre does not access identities or secret files. The option also works with `new Configre(configPath, { secrets: true }).get()` and CommonJS consumers.
+- Activation depends only on the existing files; there is no `secrets` option. The same behavior applies to `new Configre(configPath).get()` and CommonJS consumers.
 - Each OS user has one identity reused across projects; authorization is per project. A service running under another OS user needs its own registration. All authorized identities can decrypt all profiles in the project's encrypted file.
 - Public recipient files must contain a single RSA-3072 public key in PEM format, with exponent 65537, as generated by Configre. Other file extensions are ignored, and duplicate keys do not add recipients. The administrator is always included.
 - Registration uses an isolated Git index and publishes only the public-key file. It preserves unrelated staged and unstaged changes, runs no commit or pre-push hooks, and does not push local tags, merge, rebase or force-push. Failed registrations can be retried at the next startup; each Git command has a 30-second timeout. An authorized server loads secrets without Git commands or project writes.

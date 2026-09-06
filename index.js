@@ -10,15 +10,10 @@ const requireConfig = createRequire(import.meta.url);
 const log = lemonlog("Configre");
 
 class ConfigreClass {
-    constructor(pathOrDir, options = {}) {
+    constructor(pathOrDir) {
         if (typeof pathOrDir !== "string" || pathOrDir.length === 0) {
             throw new TypeError("Configre path must be a non-empty string");
         }
-        if (options === null || typeof options !== "object" || Array.isArray(options) ||
-            (options.secrets !== undefined && typeof options.secrets !== "boolean")) {
-            throw new TypeError("Configre options must be an object with an optional boolean secrets property");
-        }
-
         const dir = path.join(pathOrDir);
         const isNested = (ConfigreClass._nesting || 0) > 0;
         ConfigreClass._nesting = (ConfigreClass._nesting || 0) + 1;
@@ -35,9 +30,7 @@ class ConfigreClass {
             const configArg = process.argv.find(arg => arg.startsWith('--config='));
             this.profile = configArg ? configArg.slice('--config='.length) : os.hostname();
             this.profileSettings = this.loadProfileSettings();
-            this.secretSettings = options.secrets === true
-                ? loadSecrets(pathOrDir, this.configFile, this.profile)
-                : [];
+            this.secretSettings = loadSecrets(pathOrDir, this.configFile, this.profile);
         } finally {
             ConfigreClass._nesting -= 1;
         }
@@ -93,11 +86,11 @@ class ConfigreClass {
 }
 
 // Wrapper function to support both constructor and function usage
-function Configre(path, options) {
+function Configre(path) {
     if (this instanceof Configre) {
-        return new ConfigreClass(path, options);
+        return new ConfigreClass(path);
     } else {
-        return new ConfigreClass(path, options).get();
+        return new ConfigreClass(path).get();
     }
 }
 

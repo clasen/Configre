@@ -51,7 +51,7 @@ function writeSettings(f, settings = { api: { key: sentinel } }) {
 }
 
 function load(f) {
-    return Configre(f.config, { secrets: true });
+    return Configre(f.config);
 }
 
 function envelope(f) {
@@ -98,23 +98,40 @@ function gitFixture(t) {
     };
 }
 
-test("secrets stay opt-in and invalid options fail before creating an identity", t => {
+test("missing secret counterparts leave configuration and identity untouched", t => {
     const f = fixture(t, { seed: false });
-    fs.writeFileSync(f.local, "invalid-json");
+    const publicFiles = fs.readdirSync(f.config);
     t.mock.method(os, "homedir", () => { throw new Error("must not access the identity"); });
     assert.equal(Configre(f.config).api.key, "");
-    assert.equal(Configre(f.config, { secrets: false }).api.key, "");
+    assert.deepEqual(fs.readdirSync(f.config), publicFiles);
+    fs.writeFileSync(path.join(f.config, "other.secret.cjs"), "invalid-json");
+    const files = fs.readdirSync(f.config);
+    assert.equal(Configre(f.config).api.key, "");
     assert.equal(new Configre(f.config).get().api.key, "");
-    for (const options of [null, true, [], { secrets: "true" }]) {
-        assert.throws(() => Configre(f.config, options), /options must be an object/);
-    }
-    assert.equal(fs.existsSync(f.encrypted), false);
-    assert.equal(fs.existsSync(path.join(f.config, ".gitignore")), false);
+    assert.deepEqual(fs.readdirSync(f.config), files);
     assert.equal(fs.existsSync(f.homes[0]), false);
 });
 
-test("first use initializes empty secrets and reuses all generated files", t => {
+for (const profile of ["testhost", "testhost.dev", "forced"]) {
+    test(`a ${profile} secret activates secrets without a base secret module`, t => {
+        const f = fixture(t);
+        if (profile === "forced") {
+            const previousArgs = process.argv;
+            process.argv = [...previousArgs.filter(arg => !arg.startsWith("--config=")), "--config=forced"];
+            t.after(() => { process.argv = previousArgs; });
+        }
+        const local = path.join(f.config, profile + ".secret.cjs");
+        writeSettings({ local });
+        assert.equal(load(f).api.key, sentinel);
+        assert.equal(fs.existsSync(f.local), false);
+        assert.deepEqual(fs.readdirSync(f.config).filter(name => name.endsWith(".secret.cjs")), [path.basename(local)]);
+        assert.equal(load(consumerCopy(f, "profile-only-consumer")).api.key, sentinel);
+    });
+}
+
+test("an existing empty secret module initializes secrets and reuses generated files", t => {
     const f = fixture(t, { seed: false });
+    fs.writeFileSync(f.local, "module.exports = {};\n", { mode: 0o600 });
     const ignore = path.join(f.config, ".gitignore");
     fs.writeFileSync(ignore, "# existing rules\n*.log");
     const config = load(f);
@@ -198,7 +215,7 @@ test("secrets merge last with profiles, arrays, JSON values and the constructor 
     assert.deepEqual(config.api, settings.api);
     assert.deepEqual(config.list, [9, 2]);
     assert.deepEqual(config.json, settings.json);
-    assert.deepEqual(new Configre(f.config, { secrets: true }).get(), config);
+    assert.deepEqual(new Configre(f.config).get(), config);
     assert.equal(fs.existsSync(f.recipients), true);
     assert.equal(fs.readFileSync(f.encrypted, "utf8").includes(sentinel), false);
     assert.equal(envelope(f).recipients.length, 1);
@@ -277,19 +294,19 @@ test("base and host secrets select dev and forced profiles identically on consum
     assert.deepEqual(fs.readdirSync(consumer.config), consumerFiles);
 });
 
-test("administrator scaffolds empty counterparts without overwriting existing host secrets", t => {
+test("administrator leaves missing counterparts absent and preserves existing host secrets", t => {
     const f = fixture(t);
     writeSettings(f);
     load(f);
     const host = { local: path.join(f.config, "testhost.secret.cjs") };
-    assert.equal(fs.readFileSync(host.local, "utf8"), "module.exports = {};\n");
+    assert.equal(fs.existsSync(host.local), false);
     writeSettings(host, { api: { key: "host-secret" } });
     const original = fs.readFileSync(host.local);
     fs.writeFileSync(path.join(f.config, "newhost.cjs"), "module.exports = { public: true };\n");
     load(f);
     assert.deepEqual(fs.readFileSync(host.local), original);
-    assert.equal(fs.readFileSync(path.join(f.config, "newhost.secret.cjs"), "utf8"), "module.exports = {};\n");
-    const consumer = consumerCopy(f, "scaffold-consumer");
+    assert.equal(fs.existsSync(path.join(f.config, "newhost.secret.cjs")), false);
+    const consumer = consumerCopy(f, "optional-profile-consumer");
     fs.writeFileSync(path.join(consumer.config, "newhost.cjs"), "module.exports = {};\n");
     assert.equal(load(consumer).api.key, "host-secret");
     assert.equal(fs.existsSync(path.join(consumer.config, "newhost.secret.cjs")), false);
@@ -467,20 +484,33 @@ test("private permissions and symlinks are rejected", { skip: process.platform =
     assert.throws(() => load(f), /regular file/);
 });
 
+test("explicit config files without their own secret sidecar leave identities and files untouched", t => {
+    const f = fixture(t, { seed: false });
+    const filename = path.join(f.root, "settings.cjs");
+    fs.writeFileSync(filename, 'module.exports = { public: true };');
+    fs.writeFileSync(path.join(f.root, "other.secret.cjs"), "invalid-json");
+    const files = fs.readdirSync(f.root);
+    t.mock.method(os, "homedir", () => { throw new Error("must not access the identity"); });
+    assert.deepEqual(Configre(filename), { public: true });
+    assert.deepEqual(Configre(filename.slice(0, -4)), { public: true });
+    assert.deepEqual(fs.readdirSync(f.root), files);
+    assert.equal(fs.existsSync(f.homes[0]), false);
+});
+
 test("explicit config files and extensionless paths use sidecars beside the resolved file", t => {
     const f = fixture(t);
     const filename = path.join(f.root, "settings.cjs");
     fs.writeFileSync(filename, 'module.exports = { api: { key: "", host: "file" } };');
     const local = filename.slice(0, -4) + ".secret.cjs";
     writeSettings({ local });
-    assert.equal(Configre(filename, { secrets: true }).api.key, sentinel);
-    assert.equal(Configre(filename.slice(0, -4), { secrets: true }).api.key, sentinel);
+    assert.equal(Configre(filename).api.key, sentinel);
+    assert.equal(Configre(filename.slice(0, -4)).api.key, sentinel);
     assert.equal(fs.existsSync(filename + ".secrets.enc.json"), true);
     assert.equal(fs.existsSync(filename + ".recipients"), true);
     assert.equal(fs.existsSync(path.join(f.root, "secrets.enc.json")), false);
     const relative = path.relative(process.cwd(), f.config);
     writeSettings(f);
-    assert.equal(Configre(relative, { secrets: true }).api.key, sentinel);
+    assert.equal(Configre(relative).api.key, sentinel);
 });
 
 test("ESM callers can use the same synchronous API", t => {
@@ -494,7 +524,7 @@ test("ESM callers can use the same synchronous API", t => {
         import os from 'node:os';
         import Configre from ${JSON.stringify(moduleURL)};
         os.homedir = () => process.env.CONFIGRE_TEST_HOME;
-        const cfg = Configre(process.env.CONFIGRE_TEST_PATH, { secrets: true });
+        const cfg = Configre(process.env.CONFIGRE_TEST_PATH);
         assert.equal(typeof cfg.then, 'undefined');
         assert.equal(cfg.api.key, ${JSON.stringify(sentinel)});
     `);
@@ -511,7 +541,7 @@ test("symlinked configuration directories keep directory sidecar names", { skip:
     writeSettings(f);
     const linked = path.join(f.root, "linked-config");
     fs.symlinkSync(f.config, linked);
-    assert.equal(Configre(linked, { secrets: true }).api.key, sentinel);
+    assert.equal(Configre(linked).api.key, sentinel);
     assert.equal(fs.existsSync(f.encrypted), true);
     assert.equal(fs.existsSync(path.join(f.config, "index.cjs.secrets.enc.json")), false);
 });
@@ -520,13 +550,12 @@ test("error output never includes local secret values or private key contents", 
     const f = fixture(t);
     fs.writeFileSync(f.local, `module.exports = {secret: "${sentinel}", bad`);
     assert.throws(() => load(f), /invalid secret module/);
-    assert.equal(new Configre(f.config)._isNested, false);
     const script = `
         const os = require('node:os');
         os.homedir = () => process.env.CONFIGRE_TEST_HOME;
         const Configre = require(process.env.CONFIGRE_TEST_MODULE);
         try {
-            Configre(process.env.CONFIGRE_TEST_PATH, { secrets: true });
+            Configre(process.env.CONFIGRE_TEST_PATH);
         } catch (error) {
             console.error(error.stack);
             process.exitCode = 1;
@@ -545,6 +574,8 @@ test("error output never includes local secret values or private key contents", 
     assert.match(result.stderr, /invalid secret module/);
     assert.equal((result.stdout + result.stderr).includes(sentinel), false);
     assert.equal((result.stdout + result.stderr).includes("BEGIN PRIVATE KEY"), false);
+    writeSettings(f);
+    assert.equal(new Configre(f.config)._isNested, false);
 });
 
 test("Git exclusions preserve existing rules and never hide already tracked local files", t => {
@@ -568,6 +599,7 @@ test("Git exclusions preserve existing rules and never hide already tracked loca
     assert.deepEqual(fs.readFileSync(f.encrypted), original);
     assert.ok(git(f.root, ["ls-files"]).includes("config/index.secret.cjs"));
     git(f.root, ["rm", "--cached", "config/index.secret.cjs"]);
+    writeSettings({ local: path.join(f.config, "testhost.secret.cjs") }, {});
     git(f.root, ["add", "-f", "config/testhost.secret.cjs"]);
     assert.throws(() => load(f), /tracked by Git/);
 });
@@ -579,13 +611,13 @@ test("recipient files can be tracked and sidecar names are escaped literally in 
     fs.writeFileSync(filename, "module.exports = {};");
     const local = filename.slice(0, -4) + ".secret.cjs";
     writeSettings({ local });
-    Configre(filename, { secrets: true });
+    Configre(filename);
     assert.ok(git(f.root, ["check-ignore", path.basename(local)]).includes(path.basename(local)));
     const recipient = filename + ".recipients/developer.pub";
     fs.copyFileSync(f.publicPath(1), recipient);
     git(f.root, ["add", "-f", path.relative(f.root, recipient)]);
     const original = fs.readFileSync(filename + ".secrets.enc.json");
-    assert.equal(Configre(filename, { secrets: true }).api.key, sentinel);
+    assert.equal(Configre(filename).api.key, sentinel);
     assert.notDeepEqual(fs.readFileSync(filename + ".secrets.enc.json"), original);
 });
 
@@ -773,7 +805,7 @@ test("a second process cannot write while an encrypted replacement is pending", 
                 const os = require('node:os');
                 os.homedir = () => process.env.CONFIGRE_TEST_HOME;
                 const Configre = require(process.env.CONFIGRE_TEST_MODULE);
-                assert.throws(() => Configre(process.env.CONFIGRE_TEST_PATH, { secrets: true }), /another writer/);
+                assert.throws(() => Configre(process.env.CONFIGRE_TEST_PATH), /another writer/);
             `], {
                 encoding: "utf8",
                 env: {
@@ -792,6 +824,5 @@ test("a second process cannot write while an encrypted replacement is pending", 
     assert.equal(load(f).api.key, sentinel + "-new");
     assert.equal(contested, true);
     fs.unlinkSync(f.local);
-    fs.unlinkSync(path.join(f.config, "testhost.secret.cjs"));
     assert.equal(load(f).api.key, sentinel + "-new");
 });

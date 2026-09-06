@@ -122,8 +122,14 @@ function selectSecrets(bundle, paths, profile) {
 
 function loadSecrets(configPath, configFile, profile) {
     const paths = secretPaths(configPath, configFile);
+    const names = localFiles(paths);
+    const hasEncrypted = !!stat(paths.encrypted);
+    const hasLocal = names.includes(path.basename(paths.local)) || (paths.directory &&
+        (names.includes(profile + ".dev.secret.cjs") || names.includes(profile + ".secret.cjs")));
+    if (!hasLocal && !hasEncrypted) return [];
+
     const identity = loadIdentity();
-    if (localFiles(paths).length === 0 && stat(paths.encrypted)) {
+    if (names.length === 0 && hasEncrypted) {
         try {
             return selectSecrets(validateBundle(decrypt(readJSON(paths.encrypted), identity)), paths, profile);
         } catch (error) {
@@ -143,20 +149,6 @@ function loadSecrets(configPath, configFile, profile) {
         prepareIgnore(paths);
         const settings = { files: Object.fromEntries(names.map(name => [name, readSecret(path.join(paths.parent, name))])) };
         const recipients = loadRecipients(paths.recipients, identity);
-        const templates = new Set([path.basename(paths.local)]);
-        if (paths.directory) {
-            for (const name of fs.readdirSync(paths.parent)) {
-                if (name.endsWith(".cjs") && !name.endsWith(".secret.cjs") && stat(path.join(paths.parent, name)).isFile()) {
-                    templates.add(name.slice(0, -4) + ".secret.cjs");
-                }
-            }
-        }
-        for (const name of templates) {
-            if (!Object.hasOwn(settings.files, name)) {
-                fs.writeFileSync(path.join(paths.parent, name), "module.exports = {};\n", { flag: "wx", mode: 0o600 });
-                settings.files[name] = {};
-            }
-        }
         if (hasEncrypted) {
             const previousRecipients = envelope.recipients.map(({ fingerprint, publicKey }) => ({ fingerprint, publicKey }));
             if (isDeepStrictEqual(settings, previous) && isDeepStrictEqual(recipients, previousRecipients)) {
