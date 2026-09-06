@@ -2,11 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import config from "./config.js";
+import log from "./log.js";
 import { parsePublicKey } from "./crypto.js";
 import { stat, readText, withLock } from "./files.js";
 
 function registrationError(message) {
-    return new Error(`Configre secrets: not authorized; automatic registration ${message}`);
+    const error = new Error(`Configre secrets: not authorized; automatic registration ${message}`);
+    error.code = "CONFIGRE_REGISTRATION_FAILED";
+    return error;
 }
 
 function git(directory, args, operation, options = {}) {
@@ -84,9 +87,15 @@ function registerRecipient(paths, identity, profile) {
             git(root, ["update-index", "--add", "--cacheinfo", "100644", blob, relative], "adding the public key to the isolated index", { env });
             const tree = git(root, ["write-tree"], "building the registration tree", { env }).trim();
             const commit = git(root, ["commit-tree", tree, "-p", head, "-m", `Configre: register ${profile}`], "creating the public-key commit (Git author identity must be configured)").trim();
-            fs.mkdirSync(directory, { recursive: true });
-            if (!stat(filename)) fs.writeFileSync(filename, publicKey, { flag: "wx", mode: 0o644 });
+            if (fs.mkdirSync(directory, { recursive: true })) {
+                log.info("Created recipients directory", directory);
+            }
+            if (!stat(filename)) {
+                fs.writeFileSync(filename, publicKey, { flag: "wx", mode: 0o644 });
+                log.info("Created public-key registration file", filename);
+            }
             git(root, ["push", "--no-verify", "--no-follow-tags", "--", remote, `${commit}:${remoteBranch}`], "pushing the public-key commit");
+            log.info("Published public key to Git", filename);
             if (git(root, ["symbolic-ref", "--quiet", "HEAD"], "checking the current branch").trim() !== branch) {
                 throw registrationError("published the public key, but the local branch changed concurrently; synchronize the checkout");
             }

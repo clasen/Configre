@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import Configre from "../index.js";
+import log from "../secrets/log.js";
 import { generatePrivateKey, parsePrivateKey, encrypt } from "../secrets/crypto.js";
 
 const sentinel = "synthetic-secret-for-configre-tests";
@@ -17,6 +18,9 @@ test.before(() => {
 });
 
 function fixture(t, { seed = true } = {}) {
+    const logs = { info: [], warn: [] };
+    t.mock.method(log, "info", (...args) => logs.info.push(args));
+    t.mock.method(log, "warn", (...args) => logs.warn.push(args));
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "configre-secrets-"));
     const homes = [0, 1, 2].map(index => path.join(root, `home-${index}`));
     let home = homes[0];
@@ -36,7 +40,7 @@ function fixture(t, { seed = true } = {}) {
     }
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     return {
-        root, config, homes,
+        root, config, homes, logs,
         local: path.join(config, "index.secret.cjs"),
         encrypted: path.join(config, "secrets.enc.json"),
         recipients: path.join(config, "recipients"),
@@ -52,6 +56,15 @@ function writeSettings(f, settings = { api: { key: sentinel } }) {
 
 function load(f) {
     return Configre(f.config);
+}
+
+function assertPublicOnly(f, logs, warning) {
+    const count = logs.warn.length;
+    const config = load(f);
+    assert.equal(config.api.key, "");
+    assert.equal(logs.warn.length, count + 1);
+    assert.match(logs.warn.at(-1).join(" "), warning);
+    return config;
 }
 
 function envelope(f) {
@@ -110,6 +123,45 @@ test("missing secret counterparts leave configuration and identity untouched", t
     assert.equal(new Configre(f.config).get().api.key, "");
     assert.deepEqual(fs.readdirSync(f.config), files);
     assert.equal(fs.existsSync(f.homes[0]), false);
+    assert.deepEqual(f.logs, { info: [], warn: [] });
+});
+
+test("an unauthorized machine keeps public settings and omits every encrypted field", t => {
+    const f = fixture(t);
+    writeSettings(f, { api: { key: sentinel }, encryptedOnly: { token: sentinel } });
+    load(f);
+    const consumer = consumerCopy(f, "unauthorized-consumer");
+    f.useHome(1);
+    const config = assertPublicOnly(consumer, f.logs, /not authorized.*public settings/i);
+    assert.deepEqual(config, { api: { key: "", host: "profile" }, list: [1, 2] });
+    assert.equal(Object.hasOwn(config, "encryptedOnly"), false);
+    assert.deepEqual(new Configre(consumer.config).get(), config);
+    assert.equal(JSON.stringify(f.logs).includes(sentinel), false);
+    const result = spawnSync(process.execPath, ["-e", `
+        const assert = require('node:assert/strict');
+        const os = require('node:os');
+        os.homedir = () => process.env.CONFIGRE_TEST_HOME;
+        const Configre = require(process.env.CONFIGRE_TEST_MODULE);
+        const cfg = Configre(process.env.CONFIGRE_TEST_PATH);
+        assert.equal(cfg.api.key, '');
+        assert.equal(Object.hasOwn(cfg, 'encryptedOnly'), false);
+        console.info('Application started');
+    `], {
+        encoding: "utf8",
+        env: {
+            ...process.env, DEBUG: "Configre:*",
+            CONFIGRE_TEST_HOME: f.homes[1],
+            CONFIGRE_TEST_MODULE: path.join(import.meta.dirname, "..", "index.js"),
+            CONFIGRE_TEST_PATH: consumer.config
+        }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const output = result.stdout + result.stderr;
+    assert.match(output, /Secrets not authorized; continuing with public settings only/);
+    assert.match(output, /Application started/);
+    assert.equal(output.includes(sentinel), false);
+    assert.equal(output.includes("BEGIN PRIVATE KEY"), false);
+    assert.equal(output.includes("BEGIN PUBLIC KEY"), false);
 });
 
 for (const profile of ["testhost", "testhost.dev", "forced"]) {
@@ -135,7 +187,12 @@ test("an existing empty secret module initializes secrets and reuses generated f
     const ignore = path.join(f.config, ".gitignore");
     fs.writeFileSync(ignore, "# existing rules\n*.log");
     const config = load(f);
+    const initialLogs = f.logs.info.length;
     assert.deepEqual(config, Configre(f.config));
+    assert.equal(f.logs.info.length, initialLogs);
+    for (const filename of [path.dirname(f.privatePath(0)), f.privatePath(0), f.publicPath(0), ignore, f.recipients, f.encrypted]) {
+        assert.ok(f.logs.info.some(([message, target]) => /Created|Wrote/.test(message) && target === filename));
+    }
     const original = fs.readFileSync(f.privatePath(0));
     const published = fs.readFileSync(f.publicPath(0), "utf8");
     assert.equal(parsePrivateKey(original).publicKey, published);
@@ -156,6 +213,9 @@ test("an existing empty secret module initializes secrets and reuses generated f
     assert.equal(fs.existsSync(f.encrypted + ".lock"), false);
     writeSettings(f);
     assert.equal(load(f).api.key, sentinel);
+    assert.deepEqual(f.logs.info.at(-1), ["Updated encrypted secrets file", f.encrypted]);
+    assert.equal(JSON.stringify(f.logs).includes(sentinel), false);
+    assert.equal(JSON.stringify(f.logs).includes("BEGIN PRIVATE KEY"), false);
 });
 
 test("missing administrator files are recreated without losing values or authorized recipients", t => {
@@ -198,7 +258,7 @@ test("removing every recipient revokes access without restoring keys from old ci
     assert.notDeepEqual(fs.readFileSync(f.encrypted), encrypted);
     const consumer = consumerCopy(f, "revoked-consumer");
     f.useHome(1);
-    assert.throws(() => load(consumer), /not authorized/);
+    assertPublicOnly(consumer, f.logs, /not authorized/);
 });
 
 test("secrets merge last with profiles, arrays, JSON values and the constructor API", t => {
@@ -337,7 +397,7 @@ test("grant and revoke work across isolated machines without consumer project wr
     const after = fs.readdirSync(consumer.config).map(name => [name, fs.readFileSync(path.join(consumer.config, name))]);
     assert.deepEqual(after, before);
     f.useHome(2);
-    assert.throws(() => load(consumer), /not authorized/);
+    assertPublicOnly(consumer, f.logs, /not authorized/);
     f.useHome(0);
     fs.unlinkSync(path.join(f.recipients, "developer.pub"));
     load(f);
@@ -346,9 +406,9 @@ test("grant and revoke work across isolated machines without consumer project wr
     assert.notEqual(revoked.iv, shared.iv);
     fs.copyFileSync(f.encrypted, path.join(consumer.config, "secrets.enc.json"));
     f.useHome(1);
-    assert.throws(() => load(consumer), /not authorized/);
+    assertPublicOnly(consumer, f.logs, /not authorized/);
     writeSettings({ local: path.join(consumer.config, "index.secret.cjs") }, { api: { key: "replacement" } });
-    assert.throws(() => load(consumer), /not authorized/);
+    assertPublicOnly(consumer, f.logs, /not authorized/);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(consumer.config, "secrets.enc.json"))), revoked);
     fs.writeFileSync(path.join(consumer.config, "secrets.enc.json"), JSON.stringify(shared));
     fs.unlinkSync(path.join(consumer.config, "index.secret.cjs"));
@@ -633,7 +693,11 @@ test("a server publishes only its public key once and receives automatic authori
     fs.writeFileSync(untracked, sentinel);
     const index = git(f.checkout, ["ls-files", "--stage", "-z"]);
     f.useHome(1);
-    assert.throws(() => load(f.consumer), /public key is published in Git/);
+    assertPublicOnly(f.consumer, f.logs, /public key is published in Git/i);
+    const registeredPath = fs.realpathSync(f.registration);
+    assert.ok(f.logs.info.some(([message, filename]) => message === "Created public-key registration file" && filename === registeredPath));
+    assert.deepEqual(f.logs.info.at(-1), ["Published public key to Git", registeredPath]);
+    const registrationLogs = f.logs.info.length;
     const published = git(f.remote, ["rev-parse", "main"]).trim();
     assert.equal(git(f.checkout, ["rev-parse", "HEAD"]).trim(), published);
     assert.equal(git(f.remote, ["diff-tree", "--no-commit-id", "--name-only", "-r", "main"]).trim(), "config/recipients/testhost.pub");
@@ -645,7 +709,8 @@ test("a server publishes only its public key once and receives automatic authori
     assert.equal(fs.readFileSync(untracked, "utf8"), sentinel);
     assert.equal(git(f.remote, ["show", "main:tracked.txt"]), "initial\n");
     assert.equal(git(f.remote, ["tag", "--list"]), "");
-    assert.throws(() => load(f.consumer), /public key is published in Git/);
+    assertPublicOnly(f.consumer, f.logs, /public key is published in Git/i);
+    assert.equal(f.logs.info.length, registrationLogs);
     assert.equal(git(f.remote, ["rev-parse", "main"]).trim(), published);
 
     f.useHome(0);
@@ -657,7 +722,9 @@ test("a server publishes only its public key once and receives automatic authori
     git(f.root, ["push", "--quiet"]);
     git(f.checkout, ["pull", "--quiet", "--ff-only"]);
     f.useHome(1);
+    const warnings = f.logs.warn.length;
     assert.equal(load(f.consumer).api.key, sentinel);
+    assert.equal(f.logs.warn.length, warnings);
     f.useHome(0);
     writeSettings(f, { api: { key: sentinel + "-updated" } });
     load(f);
@@ -679,18 +746,16 @@ test("a rejected registration push preserves the branch and staging area and can
     const head = git(f.checkout, ["rev-parse", "HEAD"]);
     const index = fs.readFileSync(path.join(f.checkout, ".git", "index"));
     f.useHome(1);
-    assert.throws(() => load(f.consumer), error => {
-        assert.match(error.message, /failed while pushing the public-key commit/);
-        assert.equal(error.stack.includes(sentinel), false);
-        return true;
-    });
+    assertPublicOnly(f.consumer, f.logs, /failed while pushing the public-key commit/);
+    assert.equal(JSON.stringify(f.logs).includes(sentinel), false);
+    assert.equal(f.logs.info.some(([message]) => message === "Published public key to Git"), false);
     assert.equal(git(f.checkout, ["rev-parse", "HEAD"]), head);
     assert.equal(git(f.remote, ["rev-parse", "main"]), head);
     assert.deepEqual(fs.readFileSync(path.join(f.checkout, ".git", "index")), index);
     assert.equal(fs.existsSync(path.join(f.checkout, ".git", "configre-registration.lock")), false);
     assert.equal(fs.readdirSync(path.join(f.checkout, ".git")).some(name => name.startsWith("configre-registration-")), false);
     fs.unlinkSync(hook);
-    assert.throws(() => load(f.consumer), /public key is published in Git/);
+    assertPublicOnly(f.consumer, f.logs, /public key is published in Git/i);
     assert.equal(git(f.remote, ["rev-list", "--count", "main"]).trim(), "2");
 });
 
@@ -706,9 +771,9 @@ test("registration recovers when publication succeeded before the local branch a
     git(interrupted, ["add", "tracked.txt"]);
     fs.writeFileSync(tracked, "unstaged work\n");
     f.useHome(1);
-    assert.throws(() => load(f.consumer), /public key is published in Git/);
+    assertPublicOnly(f.consumer, f.logs, /public key is published in Git/i);
     const published = git(f.remote, ["rev-parse", "main"]);
-    assert.throws(() => load({ config: path.join(interrupted, "config") }), /public key is published in Git/);
+    assertPublicOnly({ config: path.join(interrupted, "config") }, f.logs, /public key is published in Git/i);
     git(interrupted, ["pull", "--quiet", "--ff-only"]);
     assert.equal(git(interrupted, ["rev-parse", "HEAD"]), published);
     assert.equal(git(f.remote, ["rev-parse", "main"]), published);
@@ -721,16 +786,16 @@ test("registration refuses to publish unrelated local commits or guess a branch"
     const remoteHead = git(f.remote, ["rev-parse", "main"]);
     git(f.checkout, ["checkout", "--quiet", "--detach"]);
     f.useHome(1);
-    assert.throws(() => load(f.consumer), /detached HEAD/);
+    assertPublicOnly(f.consumer, f.logs, /detached HEAD/);
     git(f.checkout, ["checkout", "--quiet", "main"]);
     git(f.checkout, ["branch", "--unset-upstream"]);
-    assert.throws(() => load(f.consumer), /upstream remote/);
+    assertPublicOnly(f.consumer, f.logs, /upstream remote/);
     git(f.checkout, ["branch", "--set-upstream-to=origin/main"]);
     fs.writeFileSync(path.join(f.checkout, "tracked.txt"), "unpublished work\n");
     git(f.checkout, ["add", "tracked.txt"]);
     git(f.checkout, ["commit", "--quiet", "-m", "Unpublished work"]);
     const localHead = git(f.checkout, ["rev-parse", "HEAD"]);
-    assert.throws(() => load(f.consumer), /local branch to match its upstream/);
+    assertPublicOnly(f.consumer, f.logs, /local branch to match its upstream/);
     assert.equal(git(f.checkout, ["rev-parse", "HEAD"]), localHead);
     assert.equal(git(f.remote, ["rev-parse", "main"]), remoteHead);
     assert.equal(fs.existsSync(f.registration), false);
@@ -742,11 +807,11 @@ test("registration rejects profile collisions, unsafe names and damaged encrypte
     const previousArgs = process.argv;
     process.argv = [...previousArgs.filter(arg => !arg.startsWith("--config=")), "--config=../escape"];
     t.after(() => { process.argv = previousArgs; });
-    assert.throws(() => load(f.consumer), /requires a profile/);
+    assertPublicOnly(f.consumer, f.logs, /requires a profile/);
     process.argv = previousArgs;
     fs.mkdirSync(path.dirname(f.registration));
     fs.copyFileSync(f.publicPath(2), f.registration);
-    assert.throws(() => load(f.consumer), /different key for this profile/);
+    assertPublicOnly(f.consumer, f.logs, /different key for this profile/);
     assert.equal(fs.readFileSync(f.registration, "utf8"), fs.readFileSync(f.publicPath(2), "utf8"));
     fs.unlinkSync(f.registration);
     fs.copyFileSync(f.publicPath(2), path.join(f.recipients, "testhost.pub"));
@@ -754,7 +819,7 @@ test("registration rejects profile collisions, unsafe names and damaged encrypte
     git(f.root, ["commit", "--quiet", "-m", "Existing server identity"]);
     git(f.root, ["push", "--quiet"]);
     const remoteHead = git(f.remote, ["rev-parse", "main"]);
-    assert.throws(() => load(f.consumer), /different published key/);
+    assertPublicOnly(f.consumer, f.logs, /different published key/);
     const damaged = envelope(f);
     damaged.extra = sentinel;
     fs.writeFileSync(path.join(f.consumer.config, "secrets.enc.json"), JSON.stringify(damaged));
