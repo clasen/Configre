@@ -14,6 +14,8 @@ Environment-specific configuration manager for Node.js. Merges a default config 
 
 ### Step 1: Install the package
 
+Requires Node.js 22.13 or later. Configre is native ESM and supports synchronous CommonJS consumers through the same implementation.
+
 ```bash
 npm install configre --save
 ```
@@ -63,19 +65,23 @@ module.exports = {
 ### Step 5: Load the configuration
 
 ```javascript
-const path = require("path");
-const cfg = require("configre")(path.join(__dirname, "config"));
+import Configre from "configre";
+import { join } from "node:path";
+
+const cfg = Configre(join(import.meta.dirname, "config"));
 
 console.log(cfg.db.host); // from default
 console.log(cfg.db.user); // from host override
 ```
+
+CommonJS consumers can still use `const Configre = require("configre")` and `Configre(path.join(__dirname, "config"))`, without `.default` or `await`. Configuration files remain `.cjs` in either module system.
 
 The path argument is required. Prefer an absolute path anchored to the module. Do not recommend paths derived from `process.cwd()`, such as `path.join(process.cwd(), "config")`: they can point somewhere else when the process is launched from a different directory.
 
 To use a different config directory:
 
 ```javascript
-const cfg = require("configre")(__dirname + "/settings");
+const cfg = Configre(join(import.meta.dirname, "settings"));
 ```
 
 ## Profile resolution
@@ -99,7 +105,7 @@ Using `--config=` (instead of a positional argument) avoids conflicts with other
 
 **Example 1: Basic setup**
 User says: "Add configuration management to my Node.js project"
-Actions: install configre, create `config/index.cjs` with project defaults, load with `require("configre")(path.join(__dirname, "config"))`
+Actions: install configre, create `config/index.cjs` with project defaults, import Configre and load with `Configre(join(import.meta.dirname, "config"))`
 Result: merged config object ready to use
 
 **Example 2: Multi-environment**

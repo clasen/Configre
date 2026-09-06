@@ -76,6 +76,4 @@ function merge(object, ...sources) {
     return output;
 }
 
-module.exports = {
-    merge
-};
+export { merge };

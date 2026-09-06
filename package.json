@@ -1,7 +1,11 @@
 {
   "name": "configre",
-  "version": "1.3.0",
+  "version": "2.0.0",
   "description": "🔧 Effortlessly Tailor Your Settings",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "test": "node --test"
   },
@@ -15,6 +19,16 @@
     "setup",
     "deployment",
     "configuration",
+    "secrets",
+    "secret-management",
+    "api-keys",
+    "encryption",
+    "encrypted-config",
+    "public-key",
+    "asymmetric-encryption",
+    "secret-sharing",
+    "sops",
+    "dotenv-alternative",
     "convention",
     "stage",
     "environment",
@@ -36,5 +50,21 @@
     "url": "https://github.com/clasen/Configre/issues"
   },
   "homepage": "https://github.com/clasen/Configre#readme",
-  "packageManager": "pnpm@11.9.0"
+  "packageManager": "pnpm@11.9.0",
+  "files": [
+    "index.js",
+    "merge.js",
+    "secrets/*.js",
+    "test/*.js",
+    "skills/configre/SKILL.md",
+    "demo/demo.js",
+    "demo/config/index.cjs",
+    "demo/config/hostname.cjs",
+    "demo/module/demo.js",
+    "demo/module/package.json",
+    "demo/module/config/index.cjs",
+    "demo/module/config/hostname.cjs",
+    "demo/secrets/demo.js",
+    "demo/secrets/config/index.cjs"
+  ]
 }

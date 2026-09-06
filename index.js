@@ -1,38 +1,55 @@
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-const obj = require("./merge");
-const log = require("lemonlog")("Configre");
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { createRequire } from "node:module";
+import lemonlog from "lemonlog";
+import { merge } from "./merge.js";
+import loadSecrets from "./secrets/index.js";
+
+const requireConfig = createRequire(import.meta.url);
+const log = lemonlog("Configre");
 
 class ConfigreClass {
-    constructor(pathOrDir) {
+    constructor(pathOrDir, options = {}) {
         if (typeof pathOrDir !== "string" || pathOrDir.length === 0) {
             throw new TypeError("Configre path must be a non-empty string");
+        }
+        if (options === null || typeof options !== "object" || Array.isArray(options) ||
+            (options.secrets !== undefined && typeof options.secrets !== "boolean")) {
+            throw new TypeError("Configre options must be an object with an optional boolean secrets property");
         }
 
         const dir = path.join(pathOrDir);
         const isNested = (ConfigreClass._nesting || 0) > 0;
         ConfigreClass._nesting = (ConfigreClass._nesting || 0) + 1;
 
-        this.defaultSettings = this.tryRequire([
-            dir,
-            path.join(dir, "index.cjs"),
-            pathOrDir + ".cjs"
-        ]);
+        try {
+            this.defaultSettings = this.tryRequire([
+                dir,
+                path.join(dir, "index.cjs"),
+                pathOrDir + ".cjs"
+            ]);
 
-        this.dirname = dir;
-        this._isNested = isNested;
-        const configArg = process.argv.find(arg => arg.startsWith('--config='));
-        this.profile = configArg ? configArg.slice('--config='.length) : os.hostname();
-        this.profileSettings = this.loadProfileSettings();
-        ConfigreClass._nesting -= 1;
+            this.dirname = dir;
+            this._isNested = isNested;
+            const configArg = process.argv.find(arg => arg.startsWith('--config='));
+            this.profile = configArg ? configArg.slice('--config='.length) : os.hostname();
+            this.profileSettings = this.loadProfileSettings();
+            this.secretSettings = options.secrets === true
+                ? loadSecrets(pathOrDir, this.configFile, this.profile)
+                : [];
+        } finally {
+            ConfigreClass._nesting -= 1;
+        }
     }
 
     // Helper method to try requiring files with different extensions or paths
     tryRequire(paths) {
         for (const p of paths) {
             try {
-                return require(p);
+                const settings = requireConfig(p);
+                this.configFile = requireConfig.resolve(p);
+                return settings;
             } catch (e) {
                 continue;
             }
@@ -45,7 +62,7 @@ class ConfigreClass {
         const ext = '.cjs';
         const fullPath = path.join(basePath + ext);
         if (fs.existsSync(fullPath)) {
-            return { path: fullPath, module: require(fullPath) };
+            return { path: fullPath, module: requireConfig(fullPath) };
         }
         return null;
     }
@@ -71,17 +88,17 @@ class ConfigreClass {
     }
 
     get() {
-        return obj.merge({}, this.defaultSettings, this.profileSettings);
+        return merge({}, this.defaultSettings, this.profileSettings, ...this.secretSettings);
     }
 }
 
 // Wrapper function to support both constructor and function usage
-function Configre(path) {
+function Configre(path, options) {
     if (this instanceof Configre) {
-        return new ConfigreClass(path);
+        return new ConfigreClass(path, options);
     } else {
-        return new ConfigreClass(path).get();
+        return new ConfigreClass(path, options).get();
     }
 }
 
-module.exports = Configre;
+export { Configre as default, Configre as "module.exports" };
