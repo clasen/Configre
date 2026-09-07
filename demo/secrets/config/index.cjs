@@ -1,5 +1,5 @@
 module.exports = {
-    api: {
-        key: ""
+    "api": {
+        "url": "https://api.example.com"
     }
-};
+}
