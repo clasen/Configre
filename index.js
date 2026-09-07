@@ -9,6 +9,28 @@ import loadSecrets from "./secrets/index.js";
 const requireConfig = createRequire(import.meta.url);
 const log = lemonlog("Configre");
 
+function omitSecrets(settings, secrets) {
+    for (const [key, value] of Object.entries(secrets)) {
+        if (!Object.hasOwn(settings, key)) continue;
+        const current = settings[key];
+        if (value !== null && typeof value === "object" && !Array.isArray(value) &&
+            current !== null && typeof current === "object" && !Array.isArray(current)) {
+            omitSecrets(current, value);
+            if (Object.keys(current).length === 0) delete settings[key];
+        } else {
+            delete settings[key];
+        }
+    }
+}
+
+function printSettings(settings, secretSettings) {
+    const output = merge({}, settings);
+    for (const secrets of secretSettings) {
+        omitSecrets(output, secrets);
+    }
+    log.debug(output);
+}
+
 class ConfigreClass {
     constructor(pathOrDir) {
         if (typeof pathOrDir !== "string" || pathOrDir.length === 0) {
@@ -83,6 +105,10 @@ class ConfigreClass {
     get() {
         return merge({}, this.defaultSettings, this.profileSettings, ...this.secretSettings);
     }
+
+    print() {
+        printSettings(this.get(), this.secretSettings);
+    }
 }
 
 // Wrapper function to support both constructor and function usage
@@ -90,7 +116,14 @@ function Configre(path) {
     if (this instanceof Configre) {
         return new ConfigreClass(path);
     } else {
-        return new ConfigreClass(path).get();
+        const config = new ConfigreClass(path);
+        const settings = config.get();
+        if (!Object.hasOwn(settings, "print")) {
+            Object.defineProperty(settings, "print", {
+                value: () => printSettings(settings, config.secretSettings)
+            });
+        }
+        return settings;
     }
 }
 

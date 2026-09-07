@@ -80,6 +80,105 @@ function consumerCopy(f, name) {
     return { config };
 }
 
+test("print logs public configuration without creating secret artifacts", t => {
+    const f = fixture(t, { seed: false });
+    const calls = [];
+    t.mock.method(Object.getPrototypeOf(log), "debug", (...args) => calls.push(args));
+    const config = new Configre(f.config);
+
+    assert.equal(calls.length, 0);
+    config.print();
+    assert.deepEqual(calls, [[config.get()]]);
+    assert.equal(fs.existsSync(f.homes[0]), false);
+});
+
+test("function results expose print without changing enumerable data and log current settings", t => {
+    const f = fixture(t, { seed: false });
+    const calls = [];
+    t.mock.method(Object.getPrototypeOf(log), "debug", (...args) => calls.push(args));
+    const cfg = Configre(f.config);
+    const expected = new Configre(f.config).get();
+
+    assert.equal(typeof cfg.print, "function");
+    assert.deepEqual(Object.keys(cfg), Object.keys(expected));
+    assert.deepEqual({ ...cfg }, expected);
+    assert.equal(JSON.stringify(cfg), JSON.stringify(expected));
+    cfg.api.host = "updated";
+    cfg.print();
+    assert.deepEqual(calls, [[{ ...expected, api: { key: "", host: "updated" } }]]);
+    assert.equal(cfg.api.host, "updated");
+});
+
+test("a public print field remains configuration data", t => {
+    const f = fixture(t, { seed: false });
+    fs.writeFileSync(path.join(f.config, "index.cjs"), 'module.exports = { print: false };');
+    assert.equal(Configre(f.config).print, false);
+    const calls = [];
+    t.mock.method(Object.getPrototypeOf(log), "debug", (...args) => calls.push(args));
+    new Configre(f.config).print();
+    assert.equal(calls[0][0].print, false);
+});
+
+test("print omits local and encrypted secret fields without changing effective settings", t => {
+    const f = fixture(t);
+    const calls = [];
+    t.mock.method(Object.getPrototypeOf(log), "debug", (...args) => calls.push(args));
+    writeSettings(f, {
+        api: { key: sentinel },
+        list: [sentinel],
+        privateGroup: { value: sentinel },
+        optional: null,
+        empty: "",
+        enabled: false,
+        count: 0
+    });
+    fs.writeFileSync(path.join(f.config, "testhost.secret.cjs"),
+        `module.exports = { api: { other: ${JSON.stringify(sentinel)} }, privateGroup: "public-looking" };`);
+
+    load(f);
+    for (const source of [f, consumerCopy(f, "debug-consumer")]) {
+        const config = new Configre(source.config);
+        const before = config.get();
+        const secretsBefore = structuredClone(config.secretSettings);
+        config.print();
+
+        assert.deepEqual(calls.at(-1), [{ api: { host: "profile" } }]);
+        assert.equal(JSON.stringify(calls).includes(sentinel), false);
+        assert.deepEqual(config.get(), before);
+        assert.deepEqual(config.secretSettings, secretsBefore);
+        assert.equal(before.api.key, sentinel);
+        assert.equal(before.list[0], sentinel);
+        assert.equal(before.list[1], 2);
+        const cfg = Configre(source.config);
+        cfg.api.key = sentinel + "-updated";
+        cfg.api.host = "updated";
+        cfg.print();
+        assert.deepEqual(calls.at(-1), [{ api: { host: "updated" } }]);
+        assert.equal(JSON.stringify(calls).includes(sentinel), false);
+        assert.equal(cfg.api.key, sentinel + "-updated");
+    }
+    const result = spawnSync(process.execPath, ["-e", `
+        const os = require('node:os');
+        os.homedir = () => process.env.CONFIGRE_TEST_HOME;
+        const Configre = require(process.env.CONFIGRE_TEST_MODULE);
+        Configre(process.env.CONFIGRE_TEST_PATH).print();
+    `, "--", "--config=testhost"], {
+        encoding: "utf8",
+        env: {
+            ...process.env, DEBUG: "Configre:*",
+            CONFIGRE_TEST_HOME: f.homes[0],
+            CONFIGRE_TEST_MODULE: path.join(import.meta.dirname, "..", "index.js"),
+            CONFIGRE_TEST_PATH: path.join(f.root, "debug-consumer")
+        }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const output = result.stdout + result.stderr;
+    assert.match(output, /Configre:debug/);
+    assert.match(output, /host: 'profile'/);
+    assert.equal(output.includes(sentinel), false);
+    assert.equal(output.includes("privateGroup"), false);
+});
+
 function git(directory, args) {
     const result = spawnSync("git", ["-C", directory, ...args], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);

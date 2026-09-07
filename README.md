@@ -124,7 +124,24 @@ const cfg = Configre(configPath);
 
 Secrets activate automatically when the base configuration or selected profile has a corresponding `.secret.cjs` file, or when `secrets.enc.json` already exists. No options are needed. Loading remains synchronous, and your application reads the result through ordinary properties such as `cfg.api.key`.
 
-> The demo reports `API key configured:` without printing the key. Avoid logging `cfg` in your application: it contains the decrypted secrets.
+> The demo reports `API key configured:` without printing the key. Avoid logging `cfg` in your application: it contains the decrypted secrets. Use `cfg.print()` to log configuration with secret fields omitted.
+
+```javascript
+const cfg = Configre(configPath);
+cfg.print();
+```
+
+`print()` calls Configre's `log.debug`; enable its output with `DEBUG=Configre:*`.
+It omits fields supplied by the base and selected profile's `.secret.cjs` files,
+including when loaded from the encrypted file. Public siblings in nested objects
+remain visible; arrays supplied by secrets are omitted entirely. It does not
+modify the configuration or log automatically on load. `cfg.print()` logs its
+current values, including changes made after loading. The method is non-enumerable
+and does not appear in `Object.keys(cfg)`, object spreads or JSON output.
+`new Configre(configPath).print()` is also supported. If your configuration already
+has a field named `print`, that value is preserved; use the constructor API to print it.
+Sensitivity is determined by secret-file fields, not by names such as `password`
+or `token`: keep sensitive values in `.secret.cjs` files, not in public settings.
 
 ### 1. Start the demo on the administrator machine
 
