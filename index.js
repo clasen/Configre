@@ -9,6 +9,30 @@ import loadSecrets from "./secrets/index.js";
 const requireConfig = createRequire(import.meta.url);
 const log = lemonlog("Configre");
 
+function applyConfigEnv(env) {
+    if (env === undefined) {
+        return;
+    }
+    if (env === null || typeof env !== "object" || Array.isArray(env)) {
+        throw new TypeError("config.env must be a plain object");
+    }
+
+    for (const [key, value] of Object.entries(env)) {
+        if (key.length === 0) {
+            throw new TypeError("config.env keys must be non-empty strings");
+        }
+        if (value == null) {
+            continue;
+        }
+        if (typeof value === "object") {
+            throw new TypeError(`config.env.${key} must be a scalar`);
+        }
+        if (process.env[key] === undefined) {
+            process.env[key] = String(value);
+        }
+    }
+}
+
 function omitSecrets(settings, secrets) {
     for (const [key, value] of Object.entries(secrets)) {
         if (!Object.hasOwn(settings, key)) continue;
@@ -127,4 +151,6 @@ function Configre(path) {
     }
 }
 
-export { Configre as default, Configre as "module.exports" };
+Configre.applyConfigEnv = applyConfigEnv;
+
+export { Configre as default, Configre as "module.exports", applyConfigEnv };
