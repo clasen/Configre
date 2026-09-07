@@ -18,11 +18,10 @@ Create `config/index.cjs` with your defaults:
 module.exports = {
     db: {
         host: "localhost",
-        port: 5432,
-        password: ""
+        port: 5432
     },
     api: {
-        key: ""
+        url: "https://api.example.com"
     }
 };
 ```
@@ -73,11 +72,10 @@ The resulting configuration contains:
     db: {
         host: "db.internal",
         port: 5432,
-        password: "",
         ssl: true
     },
     api: {
-        key: ""
+        url: "https://api.example.com"
     }
 }
 ```
@@ -110,7 +108,7 @@ config/
   production.secret.cjs   # Production secrets, edited locally
 ```
 
-A secret file exports only the fields it needs to supply. Your application still reads `cfg.db.password` and `cfg.api.key`; there is no separate secrets API.
+A secret file exports only the fields it needs to supply. Your application reads them through ordinary properties such as `cfg.api.key`; there is no separate secrets API. Define sensitive fields in secret files; public configuration does not need placeholders for them.
 
 For `--config=production`, the merge order is:
 
@@ -132,17 +130,17 @@ module.exports = {
 };
 ```
 
-For a production database credential, create `config/production.secret.cjs`:
+For a production API key, create `config/production.secret.cjs`:
 
 ```javascript
 module.exports = {
-    db: {
-        password: ""
+    api: {
+        key: ""
     }
 };
 ```
 
-Fill in the values in these local files. Configre generates `secrets.enc.json` and adds Git exclusions for the editable secret files when your application runs.
+Fill in the values in these local files. The production key overrides the shared key when that profile is selected, while `api.url` still comes from the public configuration. Configre generates `secrets.enc.json` and adds Git exclusions for the editable secret files when your application runs.
 
 ### Share with a server
 
