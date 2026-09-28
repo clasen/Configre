@@ -3,7 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import Configre from "../index.js";
@@ -927,6 +928,30 @@ test("registration rejects profile collisions, unsafe names and damaged encrypte
     assert.equal(git(f.remote, ["rev-parse", "main"]), remoteHead);
 });
 
+test("a parallel loader waits for the writer and reads its completed update", async t => {
+    const f = fixture(t);
+    writeSettings(f);
+    load(f);
+    const child = spawn(process.execPath, ["--input-type=module", "-e", `
+        import fs from 'node:fs';
+        import { withLock } from ${JSON.stringify(pathToFileURL(path.resolve("secrets/files.js")).href)};
+        withLock(process.argv[1], () => {
+            process.stdout.write('locked');
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
+            fs.writeFileSync(process.argv[2], 'module.exports = { api: { key: "parallel-update" } };');
+        });
+    `, f.encrypted, f.local], { stdio: ["ignore", "pipe", "inherit"] });
+    t.after(() => child.kill());
+    const exited = once(child, "exit");
+    await once(child.stdout, "data");
+    assert.equal(fs.existsSync(f.encrypted + ".lock"), true);
+    assert.equal(load(f).api.key, "parallel-update");
+    assert.deepEqual(await exited, [0, null]);
+    assert.equal(fs.existsSync(f.encrypted + ".lock"), false);
+    fs.unlinkSync(f.local);
+    assert.equal(load(f).api.key, "parallel-update");
+});
+
 test("writer locks and failed atomic replacement preserve the last encrypted version", t => {
     const f = fixture(t);
     writeSettings(f);
@@ -934,7 +959,7 @@ test("writer locks and failed atomic replacement preserve the last encrypted ver
     const original = fs.readFileSync(f.encrypted);
     writeSettings(f, { api: { key: sentinel + "-new" } });
     fs.writeFileSync(f.encrypted + ".lock", "");
-    assert.throws(() => load(f), /another writer/);
+    assert.throws(() => load(f), /another writer.*timed out/);
     assert.equal(fs.existsSync(f.encrypted + ".lock"), true);
     assert.deepEqual(fs.readFileSync(f.encrypted), original);
     fs.unlinkSync(f.encrypted + ".lock");

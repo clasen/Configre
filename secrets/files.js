@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
+import { performance } from "node:perf_hooks";
+import config from "./config.js";
 
 function stat(filename) {
     try {
@@ -37,12 +39,20 @@ function readJSON(filename) {
 
 function withLock(filename, action) {
     const lockPath = filename + ".lock";
+    const deadline = performance.now() + config.lock.timeoutMs;
+    const sleeper = new Int32Array(new SharedArrayBuffer(4));
     let fd;
-    try {
-        fd = fs.openSync(lockPath, "wx", 0o600);
-    } catch (error) {
-        if (error.code !== "EEXIST") throw error;
-        throw new Error(`Configre secrets: another writer holds ${lockPath}; retry after it finishes, or remove the lock only if the writer has stopped`);
+    while (fd === undefined) {
+        try {
+            fd = fs.openSync(lockPath, "wx", 0o600);
+        } catch (error) {
+            if (error.code !== "EEXIST") throw error;
+            const remaining = deadline - performance.now();
+            if (remaining <= 0) {
+                throw new Error(`Configre secrets: another writer holds ${lockPath}; timed out waiting for it to finish; remove the lock only if the writer has stopped`);
+            }
+            Atomics.wait(sleeper, 0, 0, Math.min(config.lock.retryIntervalMs, remaining));
+        }
     }
     try {
         return action();
