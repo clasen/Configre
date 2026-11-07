@@ -68,7 +68,7 @@ module.exports = {
 3. Local: pull, run to incorporate the public key, and push the updated ciphertext.
 4. Server: pull and restart. Later secret updates repeat the local run/push and server pull/restart.
 
-Registration needs a branch matching its upstream, Git author identity, and non-interactive push access.
+Registration needs a branch matching its upstream and non-interactive push access. Without a Git identity, the commit is authored as `Configre <configre@localhost>`.
 Pending authorization or failed registration returns public settings only; malformed secrets, identities, and ciphertext stop loading.
 Use isolated fixtures for verification unless live registration is authorized: loading can fetch, commit, and push.
 Registration preserves unrelated changes, skips hooks, rejects key-name collisions, and retries failures on later loads.

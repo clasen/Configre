@@ -221,7 +221,7 @@ For an individual configuration file, sidecars live beside it: `settings.secret.
 
 ### Identities and registration
 
-Automatic registration requires a Git checkout with a configured upstream, Git author name/email, and credentials that allow a non-interactive push. The branch must match its upstream before a new registration. Failed registrations are retried on the next load.
+Automatic registration requires a Git checkout with a configured upstream and credentials that allow a non-interactive push. The branch must match its upstream before a new registration. The registration commit uses the Git identity already configured; without one, it is authored as `Configre <configre@localhost>`, and Git config is never changed. Failed registrations are retried on the next load.
 
 Each OS user has one identity, stored at `~/.config/configre/identity.pem` and `identity.pub`, reused across projects. Authorization is per project. A service running under another OS user needs its own registration.
 

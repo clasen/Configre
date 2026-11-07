@@ -31,6 +31,19 @@ function git(directory, args, operation, options = {}) {
     return result.stdout;
 }
 
+function identityEnv(root) {
+    const env = {};
+    for (const role of ["AUTHOR", "COMMITTER"]) {
+        try {
+            git(root, ["var", `GIT_${role}_IDENT`], `resolving the Git ${role.toLowerCase()} identity`);
+        } catch {
+            env[`GIT_${role}_NAME`] = config.git.fallbackIdentity.name;
+            env[`GIT_${role}_EMAIL`] = config.git.fallbackIdentity.email;
+        }
+    }
+    return env;
+}
+
 function registerRecipient(paths, identity, profile) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(profile)) {
         throw registrationError("requires a profile containing only letters, digits, dots, underscores or hyphens");
@@ -86,7 +99,7 @@ function registerRecipient(paths, identity, profile) {
             const blob = git(root, ["hash-object", "-w", "--stdin"], "storing the public key", { input: publicKey }).trim();
             git(root, ["update-index", "--add", "--cacheinfo", "100644", blob, relative], "adding the public key to the isolated index", { env });
             const tree = git(root, ["write-tree"], "building the registration tree", { env }).trim();
-            const commit = git(root, ["commit-tree", tree, "-p", head, "-m", `Configre: register ${profile}`], "creating the public-key commit (Git author identity must be configured)").trim();
+            const commit = git(root, ["commit-tree", tree, "-p", head, "-m", `Configre: register ${profile}`], "creating the public-key commit", { env: identityEnv(root) }).trim();
             if (fs.mkdirSync(directory, { recursive: true })) {
                 log.info("Created recipients directory", directory);
             }

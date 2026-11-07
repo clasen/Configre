@@ -837,6 +837,55 @@ test("a server publishes only its public key once and receives automatic authori
     assert.equal(git(f.remote, ["rev-list", "--count", "main", "--", "config/recipients/testhost.pub"]).trim(), "1");
 });
 
+function isolateGitIdentity(t, f) {
+    const home = path.join(f.root, "git-home");
+    fs.mkdirSync(home);
+    const overrides = {
+        HOME: home,
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_AUTHOR_NAME: undefined,
+        GIT_AUTHOR_EMAIL: undefined,
+        GIT_COMMITTER_NAME: undefined,
+        GIT_COMMITTER_EMAIL: undefined,
+        EMAIL: undefined
+    };
+    const saved = Object.fromEntries(Object.keys(overrides).map(key => [key, process.env[key]]));
+    const apply = values => Object.entries(values).forEach(([key, value]) => {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    });
+    apply(overrides);
+    t.after(() => apply(saved));
+}
+
+function publishedIdentities(f) {
+    return git(f.remote, ["log", "-1", "--format=%an <%ae>%n%cn <%ce>", "main"]).trim().split("\n");
+}
+
+test("registration publishes with a fallback identity when Git has no usable author identity", t => {
+    const f = gitFixture(t);
+    isolateGitIdentity(t, f);
+    git(f.checkout, ["config", "--unset", "user.name"]);
+    git(f.checkout, ["config", "--unset", "user.email"]);
+    git(f.checkout, ["config", "user.useConfigOnly", "true"]);
+    const repositoryConfig = fs.readFileSync(path.join(f.checkout, ".git", "config"), "utf8");
+    f.useHome(1);
+    assertPublicOnly(f.consumer, f.logs, /public key is published in Git/i);
+    assert.equal(git(f.remote, ["diff-tree", "--no-commit-id", "--name-only", "-r", "main"]).trim(), "config/recipients/testhost.pub");
+    assert.deepEqual(publishedIdentities(f), ["Configre <configre@localhost>", "Configre <configre@localhost>"]);
+    assert.equal(git(f.checkout, ["rev-parse", "HEAD"]), git(f.remote, ["rev-parse", "main"]));
+    assert.equal(fs.readFileSync(path.join(f.checkout, ".git", "config"), "utf8"), repositoryConfig);
+});
+
+test("registration keeps the identity already configured in Git", t => {
+    const f = gitFixture(t);
+    isolateGitIdentity(t, f);
+    f.useHome(1);
+    assertPublicOnly(f.consumer, f.logs, /public key is published in Git/i);
+    assert.deepEqual(publishedIdentities(f), ["Configre Test <configre-test@example.invalid>", "Configre Test <configre-test@example.invalid>"]);
+});
+
 test("a rejected registration push preserves the branch and staging area and can be retried", t => {
     const f = gitFixture(t);
     const hook = path.join(f.remote, "hooks", "pre-receive");
