@@ -49,7 +49,7 @@ function registerRecipient(paths, identity, profile) {
         throw registrationError("requires a profile containing only letters, digits, dots, underscores or hyphens");
     }
     const root = git(paths.parent, ["rev-parse", "--show-toplevel"], "locating the Git repository").trim();
-    const lock = git(root, ["rev-parse", "--path-format=absolute", "--git-path", "configre-registration"], "locating the Git lock").trim();
+    const lock = path.resolve(root, git(root, ["rev-parse", "--git-path", "configre-registration"], "locating the Git lock").trim());
     return withLock(lock, () => {
         const branch = git(root, ["symbolic-ref", "--quiet", "HEAD"], "finding the current branch (detached HEAD is unsupported)").trim();
         const branchName = branch.slice("refs/heads/".length);

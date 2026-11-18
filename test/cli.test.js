@@ -99,7 +99,7 @@ test("the editing machine reports created, unchanged and updated encrypted files
     assert.match(updated.stdout, /^Updated secrets\.enc\.json$/m);
 });
 
-test("a server registers through Git and becomes authorized after the editing machine syncs", t => {
+function publishedFixture(t) {
     const f = fixture(t);
     const { admin, server } = f.homes;
     writeSecrets(f);
@@ -115,6 +115,13 @@ test("a server registers through Git and becomes authorized after the editing ma
     git(f.app, admin, ["push", "--quiet", "--set-upstream", "origin", "main"]);
     const checkout = path.join(f.root, "server");
     git(f.root, server, ["clone", "--quiet", remote, checkout]);
+    return { ...f, remote, checkout };
+}
+
+test("a server registers through Git and becomes authorized after the editing machine syncs", t => {
+    const f = publishedFixture(t);
+    const { admin, server } = f.homes;
+    const { remote, checkout } = f;
 
     const registered = run(checkout, server, ["sync", "config", "--config=web-01"]);
     assert.equal(registered.status, 0, registered.stderr);
@@ -137,6 +144,36 @@ test("a server registers through Git and becomes authorized after the editing ma
     const authorized = run(checkout, server, ["sync", "config", "--config=web-01"]);
     assert.equal(authorized.status, 0, authorized.stderr);
     assert.match(authorized.stdout, /^Authorized to decrypt config\/secrets\.enc\.json$/m);
+});
+
+test("registration works with Git versions that echo unknown rev-parse options", { skip: process.platform === "win32" }, t => {
+    const f = publishedFixture(t);
+    const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
+    const shim = path.join(f.root, "old-git");
+    fs.mkdirSync(shim);
+    fs.writeFileSync(path.join(shim, "git"), [
+        "#!/bin/sh",
+        "for arg; do shift; if [ \"$arg\" = --path-format=absolute ]; then echo \"$arg\"; else set -- \"$@\" \"$arg\"; fi; done",
+        `exec ${JSON.stringify(realGit)} "$@"`,
+        ""
+    ].join("\n"), { mode: 0o755 });
+
+    const result = spawnSync(process.execPath, [bin, "sync", "config", "--config=web-01"], {
+        cwd: f.checkout,
+        env: { ...environment(f.homes.server), PATH: `${shim}${path.delimiter}${process.env.PATH}` },
+        encoding: "utf8"
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /^Registered config\/recipients\/web-01\.pub and pushed it to Git$/m);
+});
+
+test("unexpected registration failures report their cause", t => {
+    const f = publishedFixture(t);
+    fs.mkdirSync(path.join(f.checkout, "config", "recipients", "web-01.pub"), { recursive: true });
+
+    const result = run(f.checkout, f.homes.server, ["sync", "config", "--config=web-01"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /^Automatic public-key registration failed: Configre secrets: expected a regular file at .*recipients\/web-01\.pub; check Git and file permissions, then reload Configre to retry\.$/m);
 });
 
 test("an unauthorized machine that cannot register exits with the failure reason", t => {

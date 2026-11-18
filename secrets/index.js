@@ -173,7 +173,7 @@ function loadSecrets(configPath, configFile, profile) {
         } catch (registrationError) {
             registration = registrationError.code === "CONFIGRE_REGISTRATION_FAILED"
                 ? registrationError.message
-                : "Automatic public-key registration failed; check Git and file permissions, then reload Configre to retry.";
+                : `Automatic public-key registration failed: ${registrationError.message}; check Git and file permissions, then reload Configre to retry.`;
             outcome = { status: "registration-failed", reason: registration };
         }
         log.warn("Secrets not authorized; continuing with public settings only.", registration, "Public key:", identity.publicPath);
