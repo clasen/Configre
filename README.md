@@ -140,18 +140,22 @@ module.exports = {
 };
 ```
 
-Fill in the values in these local files. The production key overrides the shared key when that profile is selected, while `api.url` still comes from the public configuration. Configre generates `secrets.enc.json` and adds Git exclusions for the editable secret files when your application runs.
+Fill in the values in these local files. The production key overrides the shared key when that profile is selected, while `api.url` still comes from the public configuration. Configre generates `secrets.enc.json` and adds Git exclusions for the editable secret files when your application or `npx configre sync config` runs.
 
 ### Share with a server
 
-1. **Local:** run your application and push the generated encrypted file.
-2. **Server:** pull and run. On the first run, Configre automatically commits and pushes the server's public key as `recipients/<profile>.pub` (or `<hostname>.pub` when no profile is specified).
-3. **Local:** pull, run again to include that public key in the encrypted file, and push.
-4. **Server:** pull and restart. The secrets are now available through `cfg`.
+`configre sync` runs the same load as your application and reports what it did to the secrets, so neither machine has to start the application. Pass the configuration path relative to the current directory, and the same `--config=<profile>` as the application, if any.
 
-The server needs Git push access for registration. Until the updated encrypted file arrives, Configre loads public settings only.
+1. **Local:** run `npx configre sync config` and push the generated encrypted file.
+2. **Server:** pull and run `npx configre sync config --config=production`. Configre commits and pushes the server's public key as `recipients/production.pub` (or `recipients/<hostname>.pub` without `--config`).
+3. **Local:** pull, run `npx configre sync config` again to include that public key in the encrypted file, and push.
+4. **Server:** pull and restart. `npx configre sync config --config=production` now reports `Authorized`.
 
-To update secrets later, edit them locally, run, and push. Pull and restart on the server. Registration happens only once per identity.
+Starting the application performs the same steps silently. The server needs Git push access for registration. Until the updated encrypted file arrives, Configre loads public settings only.
+
+To update secrets later, edit them locally, run `npx configre sync config`, and push. Pull and restart on the server. Registration happens only once per identity.
+
+The command prints only names, paths and outcomes: `Created`, `Updated` or `Unchanged` for the encrypted file, `Registered`, `Already registered` or `Authorized` for the server. It exits with 1 when registration or loading fails, or when the configuration has no secrets, and with 2 for invalid arguments.
 
 **Profiles organize secrets; they do not isolate access.** Authorized identities can decrypt all profiles in the encrypted file. Pulling a new registration and publishing the updated encrypted file grants that identity access.
 

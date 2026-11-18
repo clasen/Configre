@@ -1,6 +1,6 @@
 {
   "name": "configre",
-  "version": "2.1.9",
+  "version": "2.2.0",
   "description": "🔧 Effortlessly Tailor Your Settings",
   "type": "module",
   "engines": {
@@ -13,6 +13,9 @@
     "lemonlog": "^1.2.2"
   },
   "main": "index.js",
+  "bin": {
+    "configre": "bin/configre.js"
+  },
   "keywords": [
     "json",
     "config",
@@ -54,6 +57,7 @@
   "files": [
     "index.js",
     "merge.js",
+    "bin/configre.js",
     "secrets/*.js",
     "test/*.js",
     "skills/configre/SKILL.md",

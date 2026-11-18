@@ -86,7 +86,7 @@ function registerRecipient(paths, identity, profile) {
             if (stat(filename)) {
                 git(root, ["update-index", "--add", "--cacheinfo", "100644", match[1], relative], "reconciling the published public-key index entry");
             }
-            return;
+            return { filename, published: false };
         }
         if (head !== remoteHead) {
             throw registrationError("requires the local branch to match its upstream before publishing; synchronize the checkout without discarding local work");
@@ -114,6 +114,7 @@ function registerRecipient(paths, identity, profile) {
             }
             git(root, ["update-ref", branch, commit, head], "updating the local branch after publication");
             git(root, ["update-index", "--add", "--cacheinfo", "100644", blob, relative], "updating the public-key index entry after publication");
+            return { filename, published: true };
         } finally {
             fs.rmSync(temporary, { recursive: true, force: true });
         }

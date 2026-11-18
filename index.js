@@ -76,7 +76,9 @@ class ConfigreClass {
             const configArg = process.argv.find(arg => arg.startsWith('--config='));
             this.profile = configArg ? configArg.slice('--config='.length) : os.hostname();
             this.profileSettings = this.loadProfileSettings();
-            this.secretSettings = loadSecrets(pathOrDir, this.configFile, this.profile);
+            const secrets = loadSecrets(pathOrDir, this.configFile, this.profile);
+            this.secretSettings = secrets.settings;
+            this.secretsOutcome = secrets.outcome;
         } finally {
             ConfigreClass._nesting -= 1;
         }

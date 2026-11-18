@@ -131,20 +131,23 @@ function loadSecrets(configPath, configFile, profile) {
     const hasEncrypted = !!stat(paths.encrypted);
     const hasLocal = names.includes(path.basename(paths.local)) || (paths.directory &&
         (names.includes(profile + ".dev.secret.cjs") || names.includes(profile + ".secret.cjs")));
-    if (!hasLocal && !hasEncrypted) return [];
+    if (!hasLocal && !hasEncrypted) return { settings: [], outcome: { status: "inactive" } };
 
     const identity = loadIdentity();
     try {
         if (names.length === 0 && hasEncrypted) {
-            return selectSecrets(validateBundle(decrypt(readJSON(paths.encrypted), identity)), paths, profile);
+            return {
+                settings: selectSecrets(validateBundle(decrypt(readJSON(paths.encrypted), identity)), paths, profile),
+                outcome: { status: "authorized", encrypted: paths.encrypted }
+            };
         }
 
-        const bundle = withLock(paths.encrypted, () => {
+        const { bundle, status } = withLock(paths.encrypted, () => {
             const names = localFiles(paths);
             const hasEncrypted = !!stat(paths.encrypted);
             const envelope = hasEncrypted ? readJSON(paths.encrypted) : null;
             const previous = hasEncrypted ? validateBundle(decrypt(envelope, identity)) : null;
-            if (names.length === 0 && hasEncrypted) return previous;
+            if (names.length === 0 && hasEncrypted) return { bundle: previous, status: "authorized" };
 
             prepareIgnore(paths);
             const settings = { files: Object.fromEntries(names.map(name => [name, readSecret(path.join(paths.parent, name))])) };
@@ -152,26 +155,29 @@ function loadSecrets(configPath, configFile, profile) {
             if (hasEncrypted) {
                 const previousRecipients = envelope.recipients.map(({ fingerprint, publicKey }) => ({ fingerprint, publicKey }));
                 if (isDeepStrictEqual(settings, previous) && isDeepStrictEqual(recipients, previousRecipients)) {
-                    return settings;
+                    return { bundle: settings, status: "unchanged" };
                 }
             }
             writeEncrypted(paths.encrypted, encrypt(settings, recipients));
             log.info(hasEncrypted ? "Updated encrypted secrets file" : "Created encrypted secrets file", paths.encrypted);
-            return settings;
+            return { bundle: settings, status: hasEncrypted ? "updated" : "created" };
         });
-        return selectSecrets(bundle, paths, profile);
+        return { settings: selectSecrets(bundle, paths, profile), outcome: { status, encrypted: paths.encrypted } };
     } catch (error) {
         if (error.code !== "CONFIGRE_NOT_AUTHORIZED") throw error;
         let registration = "Public key is published in Git. The administrator must pull, reload Configre and publish secrets.enc.json; then pull the updated encrypted file and reload Configre.";
+        let outcome;
         try {
-            registerRecipient(paths, identity, profile);
+            const { filename, published } = registerRecipient(paths, identity, profile);
+            outcome = { status: published ? "registered" : "already-registered", recipient: filename };
         } catch (registrationError) {
             registration = registrationError.code === "CONFIGRE_REGISTRATION_FAILED"
                 ? registrationError.message
                 : "Automatic public-key registration failed; check Git and file permissions, then reload Configre to retry.";
+            outcome = { status: "registration-failed", reason: registration };
         }
         log.warn("Secrets not authorized; continuing with public settings only.", registration, "Public key:", identity.publicPath);
-        return [];
+        return { settings: [], outcome };
     }
 }
 

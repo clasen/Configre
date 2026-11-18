@@ -63,10 +63,16 @@ module.exports = {
 
 ### Sharing and updates
 
-1. Local: create secret files and run; Configre generates ciphertext and Git exclusions. Push the encrypted file.
-2. Server: pull and run; Configre automatically commits and pushes `recipients/<profile>.pub`.
-3. Local: pull, run to incorporate the public key, and push the updated ciphertext.
-4. Server: pull and restart. Later secret updates repeat the local run/push and server pull/restart.
+Use `npx configre sync <config-path> [--config=<profile>]` for these steps instead of starting the application or writing `node -e` loaders.
+It runs a normal load with the same profile rules and prints only paths and outcomes.
+
+1. Local: create secret files and run `npx configre sync config`; it reports `Created` ciphertext and adds Git exclusions. Push the encrypted file.
+2. Server: pull and run `npx configre sync config --config=<profile>`; it reports `Registered` after pushing `recipients/<profile>.pub`.
+3. Local: pull, run `npx configre sync config` (reports `Updated`), and push the ciphertext.
+4. Server: pull; `sync` reports `Authorized`. Restart. Later secret updates repeat the local sync/push and server pull/restart.
+
+`Already registered` means the key is published but the ciphertext does not include it yet; `Unchanged` means nothing needed re-encryption.
+Exit codes: 1 for failed registration or loading, or a configuration without secrets; 2 for invalid arguments.
 
 Registration needs a branch matching its upstream and non-interactive push access. Without a Git identity, the commit is authored as `Configre <configre@localhost>`.
 Pending authorization or failed registration returns public settings only; malformed secrets, identities, and ciphertext stop loading.
